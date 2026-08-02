@@ -2,6 +2,10 @@ import asyncio
 import sqlite3
 import os
 import json
+import httpx
+from datetime import datetime, timedelta
+from bs4 import BeautifulSoup
+from urllib.parse import urlparse
 from mcp.server.models import InitializationOptions
 import mcp.types as types
 from mcp.server import Server, NotificationOptions
@@ -37,16 +41,28 @@ def init_db():
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )
     """)
+    # Create news cache table
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS news_cache (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        ticker TEXT,
+        title TEXT,
+        source TEXT,
+        snippet TEXT,
+        link TEXT,
+        fetched_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+    """)
     
     # Populate default mock holdings if empty
     cursor.execute("SELECT COUNT(*) FROM holdings")
     if cursor.fetchone()[0] == 0:
         mock_holdings = [
-            ("AAPL", "Apple Inc.", 50, 175.50),
-            ("TSLA", "Tesla Inc.", 20, 220.00),
-            ("NVDA", "NVIDIA Corporation", 100, 450.25),
-            ("MSFT", "Microsoft Corporation", 30, 380.00),
-            ("AMZN", "Amazon.com Inc.", 40, 145.10)
+            ("GOTO", "PT GoTo Gojek Tokopedia Tbk", 10000, 50.0),
+            ("BBCA", "PT Bank Central Asia Tbk", 500, 9500.0),
+            ("BMRI", "PT Bank Mandiri (Persero) Tbk", 1000, 6000.0),
+            ("TLKM", "PT Telkom Indonesia (Persero) Tbk", 2000, 3800.0),
+            ("ASII", "PT Astra International Tbk", 1500, 5000.0)
         ]
         cursor.executemany("INSERT INTO holdings VALUES (?, ?, ?, ?)", mock_holdings)
         conn.commit()
@@ -54,6 +70,51 @@ def init_db():
 
 # Initialize DB on load
 init_db()
+
+# Cache configuration
+NEWS_CACHE_EXPIRY_HOURS = 2
+
+async def fetch_news_from_rss(ticker: str) -> list[dict]:
+    """Fetch real financial news from Google News RSS feed. No API key needed."""
+    try:
+        query = f"{ticker} saham"
+        rss_url = f"https://news.google.com/rss/search?q={query}&hl=id&gl=ID&ceid=ID:id"
+        
+        async with httpx.AsyncClient(verify=False, timeout=15.0) as client:
+            response = await client.get(rss_url)
+            response.raise_for_status()
+        
+        soup = BeautifulSoup(response.text, "xml")
+        items = soup.find_all("item", limit=5)
+        
+        articles = []
+        for item in items:
+            title = item.find("title").text if item.find("title") else ""
+            link = item.find("link").text if item.find("link") else ""
+            pub_date = item.find("pubDate").text if item.find("pubDate") else ""
+            source_tag = item.find("source")
+            source = source_tag.text if source_tag else urlparse(link).netloc.replace("www.", "")
+            
+            # Google News RSS doesn't have snippets, so we use the title as context
+            description = item.find("description")
+            snippet = ""
+            if description:
+                # Description contains HTML, extract text
+                desc_soup = BeautifulSoup(description.text, "html.parser")
+                snippet = desc_soup.get_text(strip=True)[:300]
+            
+            articles.append({
+                "title": title,
+                "source": source,
+                "snippet": snippet or title,
+                "link": link,
+                "date": pub_date,
+            })
+        
+        return articles
+    except Exception as e:
+        print(f"[Error] Google News RSS fetch failed: {e}")
+        return []
 
 @server.list_tools()
 async def handle_list_tools() -> list[types.Tool]:
@@ -127,89 +188,69 @@ async def handle_call_tool(
         ticker = arguments.get("ticker", "").upper() if arguments else ""
         if not ticker:
             return [types.TextContent(type="text", text="Error: Missing 'ticker' argument.")]
-            
-        # Realistic mock data containing clear signals for agents to analyze
-        news_data = {
-            "AAPL": [
-                {
-                    "title": "Apple launches new iPhone with integrated edge AI capabilities",
-                    "source": "TechCrunch",
-                    "summary": "Apple announced its latest iPhone line with an upgraded neural engine, enabling running smaller LLMs directly on-device. Analysts predict high upgrade cycles.",
-                    "sentiment": "Positive"
-                },
-                {
-                    "title": "Antitrust regulations tighten in Europe for Apple App Store",
-                    "source": "Bloomberg",
-                    "summary": "The European Union is launching a new investigation into Apple's alternative app marketplace fees, potentially impacting services revenue growth.",
-                    "sentiment": "Negative"
-                }
-            ],
-            "TSLA": [
-                {
-                    "title": "Tesla Q2 deliveries beat Wall Street expectations",
-                    "source": "Reuters",
-                    "summary": "Tesla reported deliveries of 443,956 vehicles in Q2, beating the average analyst estimate of 439,000. Operating margins show stabilization.",
-                    "sentiment": "Positive"
-                },
-                {
-                    "title": "Gigafactory Berlin faces temporary environmental audit halts",
-                    "source": "Der Spiegel",
-                    "summary": "Tesla's expansion plans in Germany face delay as local authorities mandate additional water preservation studies. Expected delay of 3 months.",
-                    "sentiment": "Negative"
-                }
-            ],
-            "NVDA": [
-                {
-                    "title": "NVIDIA unveils next-gen Blackwell Ultra AI GPUs",
-                    "source": "VentureBeat",
-                    "summary": "CEO Jensen Huang presented the Blackwell Ultra chip family, showcasing a 30% reduction in energy usage and 2.5x throughput for LLM training compared to Hopper.",
-                    "sentiment": "Positive"
-                },
-                {
-                    "title": "US government discusses further restrictions on AI chip exports",
-                    "source": "Wall Street Journal",
-                    "summary": "New export controls are being drafted which could restrict slightly lower-powered chips from being exported to certain regions, representing a potential 8% headwind on Nvidia's data center revenue.",
-                    "sentiment": "Negative"
-                }
-            ],
-            "MSFT": [
-                {
-                    "title": "Microsoft Copilot active users grow by 60% quarter-over-quarter",
-                    "source": "CNBC",
-                    "summary": "Microsoft CEO Satya Nadella announced substantial enterprise seat expansions for Office 365 Copilot, cementing Microsoft's lead in monetizing generative AI.",
-                    "sentiment": "Positive"
-                },
-                {
-                    "title": "OpenAI governance changes create uncertainty for Microsoft partnership",
-                    "source": "The Verge",
-                    "summary": "Recent discussions about OpenAI restructuring into a for-profit entity raise questions regarding Microsoft's long-term access to proprietary IP.",
-                    "sentiment": "Neutral"
-                }
-            ],
-            "AMZN": [
-                {
-                    "title": "AWS launches low-cost custom AI chips to compete with Nvidia",
-                    "source": "TechRadar",
-                    "summary": "Amazon Web Services announces Trainium2 instances are now generally available, offering up to 40% better price-performance for training models, attracting major startups.",
-                    "sentiment": "Positive"
-                },
-                {
-                    "title": "Consumer retail spending shows slight cooling in core sectors",
-                    "source": "Financial Times",
-                    "summary": "US retail sales grew by only 0.1% last month, indicating that high interest rates are starting to curb consumer spending on non-essential goods.",
-                    "sentiment": "Negative"
-                }
-            ]
-        }
         
-        articles = news_data.get(ticker, [
-            {
-                "title": f"Market updates for {ticker}",
-                "source": "Financial News",
-                "summary": f"Stock ticker {ticker} shows stable trading volumes today. Analysts remain neutral pending next quarter's earnings report.",
-                "sentiment": "Neutral"
-            }
-        ])
+        # 1. Check cache — return if fresh data exists
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cache_cutoff = (datetime.now() - timedelta(hours=NEWS_CACHE_EXPIRY_HOURS)).isoformat()
+        cursor.execute(
+            "SELECT title, source, snippet, link FROM news_cache WHERE ticker = ? AND fetched_at > ?",
+            (ticker, cache_cutoff)
+        )
+        cached_rows = cursor.fetchall()
+        conn.close()
+        
+        if cached_rows:
+            print(f"[Cache HIT] Returning {len(cached_rows)} cached articles for {ticker}")
+            articles = [
+                {"title": r[0], "source": r[1], "snippet": r[2], "link": r[3]}
+                for r in cached_rows
+            ]
+            return [types.TextContent(type="text", text=json.dumps(articles, indent=2))]
+        
+        # 2. Cache miss — fetch from Google News RSS
+        print(f"[Cache MISS] Fetching live news for {ticker} from Google News RSS...")
+        articles = await fetch_news_from_rss(ticker)
+        
+        # 3. If search failed, try returning stale cached data as fallback
+        if not articles:
+            conn = sqlite3.connect(DB_PATH)
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT title, source, snippet, link FROM news_cache WHERE ticker = ? ORDER BY fetched_at DESC LIMIT 5",
+                (ticker,)
+            )
+            stale_rows = cursor.fetchall()
+            conn.close()
+            
+            if stale_rows:
+                print(f"[Fallback] Returning {len(stale_rows)} stale cached articles for {ticker}")
+                articles = [
+                    {"title": r[0], "source": r[1], "snippet": r[2], "link": r[3]}
+                    for r in stale_rows
+                ]
+                return [types.TextContent(type="text", text=json.dumps(articles, indent=2))]
+            
+            # No cache, no search results
+            return [types.TextContent(type="text", text=json.dumps([{
+                "title": f"No recent news found for {ticker}",
+                "source": "System",
+                "snippet": f"Unable to fetch news for {ticker} at this time.",
+                "link": ""
+            }], indent=2))]
+        
+        # 4. Save fresh results to cache
+        conn = sqlite3.connect(DB_PATH)
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM news_cache WHERE ticker = ?", (ticker,))
+        for article in articles:
+            cursor.execute(
+                "INSERT INTO news_cache (ticker, title, source, snippet, link) VALUES (?, ?, ?, ?, ?)",
+                (ticker, article["title"], article["source"], article["snippet"], article.get("link", ""))
+            )
+        conn.commit()
+        conn.close()
+        print(f"[Cache SAVED] Stored {len(articles)} articles for {ticker}")
         
         return [types.TextContent(type="text", text=json.dumps(articles, indent=2))]
         

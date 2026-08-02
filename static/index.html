@@ -9,7 +9,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
     <!-- CSS Stylesheet -->
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="style.css?v=1.1">
     <!-- Lucide Icons -->
     <script src="https://unpkg.com/lucide@latest"></script>
     <!-- Marked.js for Markdown parsing -->
@@ -41,6 +41,9 @@
                     <!-- Loaded dynamically -->
                     <div class="loader-small"></div>
                 </div>
+                <button class="add-holding-btn" onclick="openAddHoldingModal()">
+                    <i data-lucide="plus"></i> Add New Holding
+                </button>
             </div>
 
             <!-- Configuration / Input -->
@@ -60,11 +63,11 @@
                 <div class="quick-tickers">
                     <span>Quick Select:</span>
                     <div class="tickers-chips">
-                        <button class="chip" onclick="selectTicker('AAPL')">AAPL</button>
-                        <button class="chip" onclick="selectTicker('TSLA')">TSLA</button>
-                        <button class="chip" onclick="selectTicker('NVDA')">NVDA</button>
-                        <button class="chip" onclick="selectTicker('MSFT')">MSFT</button>
-                        <button class="chip" onclick="selectTicker('AMZN')">AMZN</button>
+                        <button class="chip" onclick="selectTicker('GOTO')">GOTO</button>
+                        <button class="chip" onclick="selectTicker('BBCA')">BBCA</button>
+                        <button class="chip" onclick="selectTicker('BMRI')">BMRI</button>
+                        <button class="chip" onclick="selectTicker('TLKM')">TLKM</button>
+                        <button class="chip" onclick="selectTicker('ASII')">ASII</button>
                     </div>
                 </div>
             </div>
@@ -168,6 +171,41 @@
         </div>
     </div>
 
+    <!-- Modal for Adding/Editing Holdings -->
+    <div id="holding-modal" class="modal hidden">
+        <div class="modal-content card" style="max-width: 400px;">
+            <div class="modal-header">
+                <h2 id="holding-modal-title"><i data-lucide="wallet"></i> Add Holding</h2>
+                <button class="btn-close" onclick="closeHoldingModal()"><i data-lucide="x"></i></button>
+            </div>
+            <div class="modal-body">
+                <form id="holding-form">
+                    <input type="hidden" id="holding-mode" value="add">
+                    <div class="form-group">
+                        <label for="h-ticker">Ticker Symbol</label>
+                        <input type="text" id="h-ticker" class="form-control" placeholder="e.g. GOTO" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="h-company">Company Name</label>
+                        <input type="text" id="h-company" class="form-control" placeholder="e.g. PT GoTo Tbk" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="h-shares">Shares</label>
+                        <input type="number" id="h-shares" class="form-control" placeholder="1000" min="1" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="h-cost">Average Cost ($ or Rp)</label>
+                        <input type="number" step="0.01" id="h-cost" class="form-control" placeholder="50.0" min="0.01" required>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="chip" onclick="closeHoldingModal()">Cancel</button>
+                        <button type="submit" class="btn-primary">Save Holding</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
     <!-- JavaScript logic -->
     <script>
         // Initialize Lucide icons
@@ -186,13 +224,24 @@
         const modalTitle = document.getElementById('modal-title');
         const modalBody = document.getElementById('modal-body');
 
+        // Holding Modal Elements
+        const holdingModal = document.getElementById('holding-modal');
+        const holdingForm = document.getElementById('holding-form');
+        const hTicker = document.getElementById('h-ticker');
+        const hCompany = document.getElementById('h-company');
+        const hShares = document.getElementById('h-shares');
+        const hCost = document.getElementById('h-cost');
+        const hMode = document.getElementById('h-mode');
+
         let historicalReports = [];
+        let currentHoldings = [];
 
         // Fetch Holdings on Startup
         async function fetchHoldings() {
             try {
                 const res = await fetch('/api/holdings');
                 const data = await res.json();
+                currentHoldings = data;
                 holdingsList.innerHTML = '';
                 
                 if (data.length === 0) {
@@ -203,19 +252,29 @@
                 data.forEach(h => {
                     const card = document.createElement('div');
                     card.className = `holding-card`;
-                    card.onclick = () => selectTicker(h.ticker);
                     card.innerHTML = `
-                        <div class="holding-header">
-                            <span class="ticker-symbol">${h.ticker}</span>
-                            <span class="company-name">${h.company}</span>
+                        <div style="cursor:pointer;" onclick="selectTicker('${h.ticker}')">
+                            <div class="holding-header">
+                                <span class="ticker-symbol">${h.ticker}</span>
+                                <span class="company-name">${h.company}</span>
+                            </div>
+                            <div class="holding-details">
+                                <span>Shares: <strong>${h.shares}</strong></span>
+                                <span>Avg Cost: <strong>${h.avg_cost.toFixed(2)}</strong></span>
+                            </div>
                         </div>
-                        <div class="holding-details">
-                            <span>Shares: <strong>${h.shares}</strong></span>
-                            <span>Avg Cost: <strong>$${h.avg_cost.toFixed(2)}</strong></span>
+                        <div class="holding-actions">
+                            <button class="btn-icon-small" title="Edit" onclick="openEditHoldingModal('${h.ticker}')">
+                                <i data-lucide="edit-2"></i>
+                            </button>
+                            <button class="btn-icon-small delete" title="Delete" onclick="deleteHolding('${h.ticker}')">
+                                <i data-lucide="trash-2"></i>
+                            </button>
                         </div>
                     `;
                     holdingsList.appendChild(card);
                 });
+                lucide.createIcons();
             } catch (err) {
                 console.error("Failed to fetch holdings:", err);
                 holdingsList.innerHTML = '<p class="error-text">Failed to load holdings.</p>';
@@ -465,6 +524,84 @@
 
         function closeModal() {
             reportModal.classList.add('hidden');
+        }
+
+        // --- Holdings CRUD Logic ---
+        function openAddHoldingModal() {
+            document.getElementById('holding-mode').value = 'add';
+            document.getElementById('holding-modal-title').innerHTML = '<i data-lucide="wallet"></i> Add Holding';
+            hTicker.value = '';
+            hTicker.disabled = false;
+            hCompany.value = '';
+            hShares.value = '';
+            hCost.value = '';
+            holdingModal.classList.remove('hidden');
+            lucide.createIcons();
+        }
+
+        function openEditHoldingModal(ticker) {
+            const h = currentHoldings.find(x => x.ticker === ticker);
+            if (!h) return;
+            document.getElementById('holding-mode').value = 'edit';
+            document.getElementById('holding-modal-title').innerHTML = '<i data-lucide="edit"></i> Edit Holding';
+            hTicker.value = h.ticker;
+            hTicker.disabled = true; // Can't edit ticker
+            hCompany.value = h.company;
+            hShares.value = h.shares;
+            hCost.value = h.avg_cost;
+            holdingModal.classList.remove('hidden');
+            lucide.createIcons();
+        }
+
+        function closeHoldingModal() {
+            holdingModal.classList.add('hidden');
+        }
+
+        holdingForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const mode = document.getElementById('holding-mode').value;
+            const payload = {
+                ticker: hTicker.value.trim().toUpperCase(),
+                company_name: hCompany.value.trim(),
+                shares: parseInt(hShares.value),
+                avg_cost: parseFloat(hCost.value)
+            };
+
+            const url = mode === 'add' ? '/api/holdings' : `/api/holdings/${payload.ticker}`;
+            const method = mode === 'add' ? 'POST' : 'PUT';
+
+            try {
+                const res = await fetch(url, {
+                    method: method,
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                
+                if (res.ok) {
+                    closeHoldingModal();
+                    fetchHoldings();
+                } else {
+                    const data = await res.json();
+                    alert(`Error: ${data.detail}`);
+                }
+            } catch (err) {
+                console.error(err);
+                alert("Failed to save holding.");
+            }
+        });
+
+        async function deleteHolding(ticker) {
+            if (!confirm(`Are you sure you want to delete ${ticker}?`)) return;
+            try {
+                const res = await fetch(`/api/holdings/${ticker}`, { method: 'DELETE' });
+                if (res.ok) {
+                    fetchHoldings();
+                } else {
+                    alert("Failed to delete holding.");
+                }
+            } catch (err) {
+                console.error(err);
+            }
         }
 
         // Setup analyze button click event

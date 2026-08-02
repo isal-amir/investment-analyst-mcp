@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from contextlib import asynccontextmanager
 from dotenv import load_dotenv
+from pydantic import BaseModel
 
 # Import MCP Client and LangGraph agent graph
 from mcp_client import MCPClientManager, get_langchain_mcp_tools
@@ -48,6 +49,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+class Holding(BaseModel):
+    ticker: str
+    company_name: str
+    shares: int
+    avg_cost: float
+
 # Endpoint: Retrieve holdings directly from the SQLite DB managed by the MCP server
 @app.get("/api/holdings")
 def get_holdings():
@@ -64,6 +71,59 @@ def get_holdings():
             {"ticker": r[0], "company": r[1], "shares": r[2], "avg_cost": r[3]}
             for r in rows
         ]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/holdings")
+def add_holding(holding: Holding):
+    db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "db", "database.sqlite")
+    try:
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT INTO holdings (ticker, company_name, shares, avg_cost) VALUES (?, ?, ?, ?)",
+            (holding.ticker.upper(), holding.company_name, holding.shares, holding.avg_cost)
+        )
+        conn.commit()
+        conn.close()
+        return {"message": "Holding added successfully"}
+    except sqlite3.IntegrityError:
+        raise HTTPException(status_code=400, detail="Ticker already exists in holdings.")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.put("/api/holdings/{ticker}")
+def update_holding(ticker: str, holding: Holding):
+    db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "db", "database.sqlite")
+    try:
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE holdings SET company_name = ?, shares = ?, avg_cost = ? WHERE ticker = ?",
+            (holding.company_name, holding.shares, holding.avg_cost, ticker.upper())
+        )
+        if cursor.rowcount == 0:
+            conn.close()
+            raise HTTPException(status_code=404, detail="Holding not found.")
+        conn.commit()
+        conn.close()
+        return {"message": "Holding updated successfully"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/api/holdings/{ticker}")
+def delete_holding(ticker: str):
+    db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "db", "database.sqlite")
+    try:
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM holdings WHERE ticker = ?", (ticker.upper(),))
+        if cursor.rowcount == 0:
+            conn.close()
+            raise HTTPException(status_code=404, detail="Holding not found.")
+        conn.commit()
+        conn.close()
+        return {"message": "Holding deleted successfully"}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -90,10 +150,6 @@ def get_reports():  # tidak menggunakan async karena justru akan mengganggu main
 @app.post("/api/analyze/{ticker}")
 async def analyze_ticker(ticker: str):
     ticker = ticker.strip().upper()
-    valid_tickers = ["AAPL", "TSLA", "NVDA", "MSFT", "AMZN"]
-    if ticker not in valid_tickers:
-        # We allow checking other stocks, but inform user they'll get neutral mock data
-        pass
         
     async def event_generator():
         try:

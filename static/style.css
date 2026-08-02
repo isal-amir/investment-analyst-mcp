@@ -721,3 +721,100 @@ body {
 @keyframes spin {
     to { transform: rotate(360deg); }
 }
+
+/* Forms & Inputs */
+.form-group {
+    margin-bottom: 16px;
+}
+.form-group label {
+    display: block;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-muted);
+    margin-bottom: 6px;
+}
+.form-control {
+    width: 100%;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--border-glass);
+    border-radius: 8px;
+    padding: 10px 14px;
+    color: #fff;
+    font-family: var(--font-sans);
+    font-size: 14px;
+    transition: var(--transition-smooth);
+}
+.form-control:focus {
+    outline: none;
+    border-color: var(--color-primary);
+    box-shadow: 0 0 10px var(--color-primary-glow);
+}
+.modal-footer {
+    padding-top: 16px;
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+}
+
+/* Holdings list action buttons */
+.holding-actions {
+    display: flex;
+    gap: 6px;
+    margin-top: 8px;
+}
+.btn-icon-small {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--border-glass);
+    border-radius: 6px;
+    color: var(--text-dim);
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: var(--transition-smooth);
+}
+.btn-icon-small:hover {
+    background: rgba(139, 92, 246, 0.15);
+    border-color: var(--color-primary);
+    color: #fff;
+}
+.btn-icon-small.delete:hover {
+    background: rgba(239, 68, 68, 0.15);
+    border-color: var(--color-high);
+    color: #f87171;
+}
+.btn-icon-small svg, .btn-icon-small i {
+    width: 14px;
+    height: 14px;
+}
+
+.add-holding-btn {
+    width: 100%;
+    background: rgba(139, 92, 246, 0.08);
+    border: 1px dashed rgba(139, 92, 246, 0.5);
+    color: #a78bfa;
+    border-radius: 12px;
+    padding: 12px;
+    font-family: var(--font-sans);
+    font-weight: 600;
+    font-size: 13px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    transition: var(--transition-smooth);
+}
+.add-holding-btn:hover {
+    background: rgba(139, 92, 246, 0.18);
+    border-color: var(--color-primary);
+    color: #fff;
+    box-shadow: 0 0 12px rgba(139, 92, 246, 0.2);
+}
+.add-holding-btn svg, .add-holding-btn i {
+    width: 16px;
+    height: 16px;
+}
+
