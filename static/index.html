@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Portfolio Risk Analyzer (LangGraph + MCP)</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+    <!-- CSS Stylesheet -->
+    <link rel="stylesheet" href="style.css">
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- Marked.js for Markdown parsing -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+</head>
+<body>
+    <!-- Background Glow Blobs -->
+    <div class="glow-blob blob-1"></div>
+    <div class="glow-blob blob-2"></div>
+    <div class="glow-blob blob-3"></div>
+
+    <div class="app-container">
+        <!-- Sidebar: Portfolio Holdings and Selection -->
+        <aside class="sidebar">
+            <div class="logo-area">
+                <i data-lucide="shield-alert" class="logo-icon"></i>
+                <div class="logo-text">
+                    <h1>Aegis Risk</h1>
+                    <span>Multi-Agent Analyzer</span>
+                </div>
+            </div>
+
+            <!-- Holdings Panel -->
+            <div class="panel-section">
+                <h3 class="section-title">
+                    <i data-lucide="wallet"></i> Current Holdings
+                </h3>
+                <div class="holdings-list" id="holdings-list">
+                    <!-- Loaded dynamically -->
+                    <div class="loader-small"></div>
+                </div>
+            </div>
+
+            <!-- Configuration / Input -->
+            <div class="panel-section">
+                <h3 class="section-title">
+                    <i data-lucide="sliders"></i> Analysis Console
+                </h3>
+                <div class="input-group">
+                    <label for="ticker-input">Enter Target Ticker</label>
+                    <div class="search-box">
+                        <input type="text" id="ticker-input" placeholder="e.g. NVDA" max="5">
+                        <button id="btn-analyze" class="btn-primary">
+                            <span>Analyze</span> <i data-lucide="play" class="btn-icon"></i>
+                        </button>
+                    </div>
+                </div>
+                <div class="quick-tickers">
+                    <span>Quick Select:</span>
+                    <div class="tickers-chips">
+                        <button class="chip" onclick="selectTicker('AAPL')">AAPL</button>
+                        <button class="chip" onclick="selectTicker('TSLA')">TSLA</button>
+                        <button class="chip" onclick="selectTicker('NVDA')">NVDA</button>
+                        <button class="chip" onclick="selectTicker('MSFT')">MSFT</button>
+                        <button class="chip" onclick="selectTicker('AMZN')">AMZN</button>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Workspace -->
+        <main class="workspace">
+            <!-- Top Stepper Progress Bar -->
+            <header class="pipeline-header">
+                <div class="stepper">
+                    <div class="step active" id="step-start">
+                        <div class="step-icon"><i data-lucide="settings"></i></div>
+                        <div class="step-label">Initialize</div>
+                    </div>
+                    <div class="step-connector"></div>
+                    <div class="step" id="step-research">
+                        <div class="step-icon"><i data-lucide="search"></i></div>
+                        <div class="step-label">MCP Research</div>
+                    </div>
+                    <div class="step-connector"></div>
+                    <div class="step" id="step-analyst">
+                        <div class="step-icon"><i data-lucide="bar-chart-2"></i></div>
+                        <div class="step-label">Analysis</div>
+                    </div>
+                    <div class="step-connector"></div>
+                    <div class="step" id="step-writer">
+                        <div class="step-icon"><i data-lucide="file-text"></i></div>
+                        <div class="step-label">Draft Report</div>
+                    </div>
+                    <div class="step-connector"></div>
+                    <div class="step" id="step-auditor">
+                        <div class="step-icon"><i data-lucide="check-square"></i></div>
+                        <div class="step-label">Compliance</div>
+                    </div>
+                </div>
+            </header>
+
+            <!-- Agent Workspace Grid -->
+            <div class="workspace-grid">
+                <!-- Left Content: Live Feed Logs and State variables -->
+                <section class="card console-card">
+                    <div class="card-header">
+                        <h2><i data-lucide="terminal"></i> Agent Execution Log</h2>
+                        <div class="badge" id="status-badge">Idle</div>
+                    </div>
+                    <div class="card-body console-body" id="console-logs">
+                        <div class="console-placeholder">
+                            <i data-lucide="cpu" class="placeholder-icon"></i>
+                            <p>Select a stock holding and run the agent system to see real-time collaboration.</p>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Right Content: Generated Report Markdown Viewer -->
+                <section class="card report-card">
+                    <div class="card-header">
+                        <h2><i data-lucide="file-text"></i> Risk Assessment Report</h2>
+                        <div id="risk-badge" class="risk-badge hidden">Medium Risk</div>
+                    </div>
+                    <div class="card-body report-body" id="report-viewer">
+                        <div class="report-placeholder">
+                            <i data-lucide="file-warning" class="placeholder-icon"></i>
+                            <p>No report generated yet. Initiate the run to synthesize the risk report.</p>
+                        </div>
+                    </div>
+                </section>
+            </div>
+
+            <!-- Bottom: Saved Historical Reports -->
+            <footer class="history-section card">
+                <div class="card-header">
+                    <h2><i data-lucide="archive"></i> Saved Assessments Database</h2>
+                </div>
+                <div class="card-body">
+                    <table class="history-table">
+                        <thead>
+                            <tr>
+                                <th>Ticker</th>
+                                <th>Risk Assessment</th>
+                                <th>Saved Timestamp</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="history-rows">
+                            <!-- Loaded dynamically -->
+                        </tbody>
+                    </table>
+                </div>
+            </footer>
+        </main>
+    </div>
+
+    <!-- Modal for viewing historical reports -->
+    <div id="report-modal" class="modal hidden">
+        <div class="modal-content card">
+            <div class="modal-header">
+                <h2 id="modal-title">Assessment Report</h2>
+                <button class="btn-close" onclick="closeModal()"><i data-lucide="x"></i></button>
+            </div>
+            <div class="modal-body" id="modal-body"></div>
+        </div>
+    </div>
+
+    <!-- JavaScript logic -->
+    <script>
+        // Initialize Lucide icons
+        lucide.createIcons();
+
+        // Constants & DOM Elements
+        const holdingsList = document.getElementById('holdings-list');
+        const tickerInput = document.getElementById('ticker-input');
+        const btnAnalyze = document.getElementById('btn-analyze');
+        const consoleLogs = document.getElementById('console-logs');
+        const reportViewer = document.getElementById('report-viewer');
+        const statusBadge = document.getElementById('status-badge');
+        const riskBadge = document.getElementById('risk-badge');
+        const historyRows = document.getElementById('history-rows');
+        const reportModal = document.getElementById('report-modal');
+        const modalTitle = document.getElementById('modal-title');
+        const modalBody = document.getElementById('modal-body');
+
+        let historicalReports = [];
+
+        // Fetch Holdings on Startup
+        async function fetchHoldings() {
+            try {
+                const res = await fetch('/api/holdings');
+                const data = await res.json();
+                holdingsList.innerHTML = '';
+                
+                if (data.length === 0) {
+                    holdingsList.innerHTML = '<p class="empty-text">No holdings in database.</p>';
+                    return;
+                }
+
+                data.forEach(h => {
+                    const card = document.createElement('div');
+                    card.className = `holding-card`;
+                    card.onclick = () => selectTicker(h.ticker);
+                    card.innerHTML = `
+                        <div class="holding-header">
+                            <span class="ticker-symbol">${h.ticker}</span>
+                            <span class="company-name">${h.company}</span>
+                        </div>
+                        <div class="holding-details">
+                            <span>Shares: <strong>${h.shares}</strong></span>
+                            <span>Avg Cost: <strong>$${h.avg_cost.toFixed(2)}</strong></span>
+                        </div>
+                    `;
+                    holdingsList.appendChild(card);
+                });
+            } catch (err) {
+                console.error("Failed to fetch holdings:", err);
+                holdingsList.innerHTML = '<p class="error-text">Failed to load holdings.</p>';
+            }
+        }
+
+        // Fetch saved reports on startup
+        async function fetchReports() {
+            try {
+                const res = await fetch('/api/reports');
+                const data = await res.json();
+                historicalReports = data;
+                historyRows.innerHTML = '';
+                
+                if (data.length === 0) {
+                    historyRows.innerHTML = `<tr><td colspan="4" class="empty-table">No historical reports saved yet.</td></tr>`;
+                    return;
+                }
+
+                data.forEach(r => {
+                    const tr = document.createElement('tr');
+                    let badgeClass = 'risk-low';
+                    if (r.risk_level.toLowerCase() === 'high') badgeClass = 'risk-high';
+                    if (r.risk_level.toLowerCase() === 'medium') badgeClass = 'risk-med';
+                    
+                    const formattedDate = new Date(r.created_at).toLocaleString();
+
+                    tr.innerHTML = `
+                        <td><strong>${r.ticker}</strong></td>
+                        <td><span class="risk-pill ${badgeClass}">${r.risk_level} Risk</span></td>
+                        <td>${formattedDate}</td>
+                        <td>
+                            <button class="btn-action" onclick="viewReportDetails(${r.id})">
+                                <i data-lucide="eye"></i> View Report
+                            </button>
+                        </td>
+                    `;
+                    historyRows.appendChild(tr);
+                });
+                lucide.createIcons();
+            } catch (err) {
+                console.error("Failed to fetch reports:", err);
+                historyRows.innerHTML = `<tr><td colspan="4" class="error-text">Failed to load history database.</td></tr>`;
+            }
+        }
+
+        function selectTicker(ticker) {
+            tickerInput.value = ticker;
+            // Highlight selector
+            document.querySelectorAll('.holding-card').forEach(c => {
+                const symb = c.querySelector('.ticker-symbol').innerText;
+                if (symb === ticker) {
+                    c.classList.add('selected');
+                } else {
+                    c.classList.remove('selected');
+                }
+            });
+        }
+
+        // Start LangGraph flow via Server-Sent Events (SSE)
+        async function runAnalysis() {
+            const ticker = tickerInput.value.trim().toUpperCase();
+            if (!ticker) {
+                alert("Please enter or select a stock ticker.");
+                return;
+            }
+
+            // UI Reset
+            consoleLogs.innerHTML = '';
+            reportViewer.innerHTML = '<div class="loader-large"></div>';
+            statusBadge.innerText = 'Initializing...';
+            statusBadge.className = 'badge active';
+            riskBadge.classList.add('hidden');
+            
+            // Disable button
+            btnAnalyze.disabled = true;
+            btnAnalyze.classList.add('loading');
+
+            // Reset pipeline steps visualizer
+            document.querySelectorAll('.step').forEach(s => s.classList.remove('active', 'completed', 'failed'));
+            document.getElementById('step-start').classList.add('active');
+
+            try {
+                // Initialize EventSource pointing to our stream endpoint
+                const response = await fetch(`/api/analyze/${ticker}`, { method: 'POST' });
+                
+                if (!response.ok) {
+                    throw new Error("Failed to start analysis stream.");
+                }
+
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+
+                    buffer += decoder.decode(value, { stream: true });
+                    const lines = buffer.split('\n\n');
+                    buffer = lines.pop(); // Keep incomplete lines in buffer
+
+                    for (const line of lines) {
+                        if (line.startsWith('data: ')) {
+                            const payload = JSON.parse(line.substring(6));
+                            handleStreamEvent(payload);
+                        }
+                    }
+                }
+            } catch (err) {
+                console.error(err);
+                appendLog('System Error', `Failed to execute agent system: ${err.message}`, 'error');
+                statusBadge.innerText = 'Failed';
+                statusBadge.className = 'badge error';
+                reportViewer.innerHTML = '<p class="error-text">An error occurred during agent execution.</p>';
+            } finally {
+                btnAnalyze.disabled = false;
+                btnAnalyze.classList.remove('loading');
+                fetchReports(); // Refresh history
+            }
+        }
+
+        // Handle SSE JSON updates
+        function handleStreamEvent(data) {
+            if (data.error) {
+                appendLog('System Error', data.error, 'error');
+                statusBadge.innerText = 'Error';
+                statusBadge.className = 'badge error';
+                document.querySelectorAll('.step.active').forEach(s => s.classList.add('failed'));
+                return;
+            }
+
+            const node = data.node;
+            const stepName = data.step;
+
+            // Update Status Badge
+            statusBadge.innerText = stepName;
+
+            // Handle Specific Nodes
+            if (node === 'system') {
+                appendLog('System orchestrator', 'Initializing agent connections, database connections, and model parameters...', 'system');
+            }
+            
+            else if (node === 'researcher') {
+                updatePipelineStep('step-research');
+                appendLog('Market Researcher Agent', `Connected to local MCP Server. Fetched holdings and news articles for ${data.ticker}. Summarized indicators.`, 'agent');
+                if (data.portfolio_data) {
+                    appendLog('MCP Tool: get_portfolio_holdings', `Retrieved Database Row: ${data.portfolio_data}`, 'tool');
+                }
+                if (data.news_data) {
+                    appendLog('MCP Tool: fetch_financial_news', `Retrieved News API articles: ${data.news_data}`, 'tool');
+                }
+            }
+            
+            else if (node === 'analyst') {
+                updatePipelineStep('step-analyst');
+                appendLog('Portfolio Analyst Agent', `Analyzing market catalyst correlation with portfolio. Exposure evaluation output:\n${data.analysis_notes}`, 'agent');
+            }
+            
+            else if (node === 'writer') {
+                updatePipelineStep('step-writer');
+                appendLog('Risk Manager Agent', `Drafted portfolio risk report. Invoking MCP Server tool 'save_risk_report' to persist in database. Risk output: ${data.risk_level}`, 'agent');
+                
+                // Show temporary draft markdown
+                if (data.final_report) {
+                    reportViewer.innerHTML = marked.parse(data.final_report);
+                    // Update risk badge
+                    riskBadge.innerText = `${data.risk_level} Risk`;
+                    riskBadge.className = `risk-badge risk-${data.risk_level.toLowerCase()}`;
+                    riskBadge.classList.remove('hidden');
+                }
+            }
+            
+            else if (node === 'auditor') {
+                updatePipelineStep('step-auditor');
+                if (data.feedback) {
+                    appendLog('Compliance Auditor Agent', `Audit failed (Revision #${data.revision_count}). Feedback provided: "${data.feedback}". Routing back to Risk Manager.`, 'warning');
+                } else {
+                    appendLog('Compliance Auditor Agent', `Audit successful. Report complies with portfolio directives. Finalized SQLite state.`, 'success');
+                    
+                    statusBadge.innerText = 'Completed';
+                    statusBadge.className = 'badge success';
+                    
+                    // Final display
+                    if (data.final_report) {
+                        reportViewer.innerHTML = marked.parse(data.final_report);
+                    }
+                    
+                    // Mark all steps as complete
+                    document.querySelectorAll('.step').forEach(s => s.classList.add('completed'));
+                }
+            }
+        }
+
+        // Append log to console
+        function appendLog(sender, text, type = 'info') {
+            const isPlaceholder = consoleLogs.querySelector('.console-placeholder');
+            if (isPlaceholder) {
+                consoleLogs.innerHTML = '';
+            }
+
+            const div = document.createElement('div');
+            div.className = `log-line log-${type}`;
+            
+            const timestamp = new Date().toLocaleTimeString();
+            
+            let icon = 'info';
+            if (type === 'error') icon = 'x-circle';
+            if (type === 'system') icon = 'server';
+            if (type === 'agent') icon = 'bot';
+            if (type === 'tool') icon = 'wrench';
+            if (type === 'success') icon = 'check-circle';
+            if (type === 'warning') icon = 'alert-triangle';
+
+            div.innerHTML = `
+                <span class="log-time">[${timestamp}]</span>
+                <span class="log-sender"><i data-lucide="${icon}"></i> ${sender}:</span>
+                <span class="log-text">${text.replace(/\n/g, '<br>')}</span>
+            `;
+            consoleLogs.appendChild(div);
+            consoleLogs.scrollTop = consoleLogs.scrollHeight;
+            lucide.createIcons();
+        }
+
+        // Highlight active pipeline steps
+        function updatePipelineStep(stepId) {
+            document.querySelectorAll('.step').forEach(s => {
+                if (s.id === stepId) {
+                    s.className = 'step active';
+                } else if (Array.from(document.querySelectorAll('.step')).indexOf(s) < Array.from(document.querySelectorAll('.step')).indexOf(document.getElementById(stepId))) {
+                    s.className = 'step completed';
+                } else {
+                    s.className = 'step';
+                }
+            });
+        }
+
+        // View historical reports in modal
+        function viewReportDetails(reportId) {
+            const report = historicalReports.find(r => r.id === reportId);
+            if (!report) return;
+
+            modalTitle.innerText = `Portfolio Risk Report: ${report.ticker}`;
+            modalBody.innerHTML = marked.parse(report.analysis);
+            reportModal.classList.remove('hidden');
+        }
+
+        function closeModal() {
+            reportModal.classList.add('hidden');
+        }
+
+        // Setup analyze button click event
+        btnAnalyze.addEventListener('click', runAnalysis);
+
+        // Startup load
+        window.onload = () => {
+            fetchHoldings();
+            fetchReports();
+        }
+    </script>
+</body>
+</html>
