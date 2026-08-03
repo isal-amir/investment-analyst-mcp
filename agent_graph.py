@@ -225,11 +225,19 @@ async def risk_manager_node(state: AgentState, config: RunnableConfig):
             report_content = tool_call["args"].get("analysis", "")
             
     risk_level = "Medium"  # Default
-    if "high risk" in report_content.lower() or "risk: high" in report_content.lower():
-        risk_level = "High"
-    elif "low risk" in report_content.lower() or "risk: low" in report_content.lower():
-        risk_level = "Low"
-        
+    if tool_was_called:
+        # If the LLM successfully called the tool, use the risk level it provided
+        risk_level = tool_call["args"].get("risk_level", "Medium")
+        # Ensure it's capitalized properly for the UI
+        risk_level = risk_level.capitalize()
+    else:
+        # Fallback string parsing if tool wasn't called
+        content_lower = report_content.lower()
+        if "high risk" in content_lower or "risk: high" in content_lower or "risk level: high" in content_lower:
+            risk_level = "High"
+        elif "low risk" in content_lower or "risk: low" in content_lower or "risk level: low" in content_lower:
+            risk_level = "Low"
+            
     if not tool_was_called and save_tool:
         await save_tool.ainvoke({
             "ticker": ticker,
