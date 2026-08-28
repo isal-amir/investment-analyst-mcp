@@ -16,12 +16,20 @@
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 </head>
 <body>
-    <!-- Background Glow Blobs -->
-    <div class="glow-blob blob-1"></div>
-    <div class="glow-blob blob-2"></div>
-    <div class="glow-blob blob-3"></div>
+    <div class="layout-wrapper">
+        <!-- Top Navbar: Stock Prices Ticker -->
+        <nav class="top-navbar">
+            <div class="navbar-brand">
+                <i data-lucide="activity" class="brand-icon"></i>
+                <span class="brand-text">Market Feed</span>
+            </div>
+            <div class="ticker-tape" id="ticker-tape">
+                <!-- Loaded dynamically via /api/prices -->
+                <div class="loader-small"></div>
+            </div>
+        </nav>
 
-    <div class="app-container">
+        <div class="app-container">
         <!-- Sidebar: Portfolio Holdings and Selection -->
         <aside class="sidebar">
             <div class="logo-area">
@@ -159,6 +167,7 @@
             </footer>
         </main>
     </div>
+</div>
 
     <!-- Modal for viewing historical reports -->
     <div id="report-modal" class="modal hidden">
@@ -604,6 +613,50 @@
             }
         }
 
+        async function fetchPrices() {
+            const tickerTape = document.getElementById('ticker-tape');
+            try {
+                const res = await fetch('/api/prices');
+                const data = await res.json();
+                
+                tickerTape.innerHTML = '';
+                
+                if (!data || data.length === 0) {
+                    tickerTape.innerHTML = '<span style="color: var(--text-dim); padding-left: 16px;">No market data available</span>';
+                    return;
+                }
+                
+                data.forEach(item => {
+                    const el = document.createElement('div');
+                    el.className = 'ticker-item';
+                    
+                    let colorClass = 'neutral';
+                    let icon = 'minus';
+                    if (item.change > 0) {
+                        colorClass = 'positive';
+                        icon = 'trending-up';
+                    } else if (item.change < 0) {
+                        colorClass = 'negative';
+                        icon = 'trending-down';
+                    }
+                    
+                    el.innerHTML = `
+                        <span class="ticker-name">${item.ticker}</span>
+                        <span class="ticker-price">${item.price.toFixed(2)}</span>
+                        <span class="ticker-change ${colorClass}">
+                            <i data-lucide="${icon}" style="width: 14px; height: 14px; margin-right: 2px;"></i>
+                            ${item.change > 0 ? '+' : ''}${item.change.toFixed(2)} (${item.change_pct > 0 ? '+' : ''}${item.change_pct.toFixed(2)}%)
+                        </span>
+                    `;
+                    tickerTape.appendChild(el);
+                });
+                lucide.createIcons();
+            } catch (err) {
+                console.error("Failed to fetch prices:", err);
+                tickerTape.innerHTML = '<span style="color: var(--color-high); padding-left: 16px;">Error loading market data</span>';
+            }
+        }
+
         // Setup analyze button click event
         btnAnalyze.addEventListener('click', runAnalysis);
 
@@ -611,6 +664,10 @@
         window.onload = () => {
             fetchHoldings();
             fetchReports();
+            fetchPrices();
+            
+            // Refresh prices every 60 seconds
+            setInterval(fetchPrices, 60000);
         }
     </script>
 </body>

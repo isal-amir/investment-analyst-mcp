@@ -3,6 +3,7 @@ import json
 import uuid
 import asyncio
 import sqlite3
+import yfinance as yf
 from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
@@ -145,6 +146,66 @@ def get_reports():  # tidak menggunakan async karena justru akan mengganggu main
         ]
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+# Endpoint: Fetch live prices for current holdings
+@app.get("/api/prices")
+def get_prices():
+    db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "db", "database.sqlite")
+    if not os.path.exists(db_path):
+        return []
+    
+    try:
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        cursor.execute("SELECT DISTINCT ticker FROM holdings")
+        rows = cursor.fetchall()
+        conn.close()
+        
+        tickers = [r[0] for r in rows]
+        if not tickers:
+            return []
+            
+        prices = []
+        for ticker in tickers:
+            try:
+                # Add .JK for Indonesian stocks if they don't have a suffix, as a fallback heuristic
+                # (Stockbit mostly uses Indonesian stocks, but we'll try raw first, then .JK)
+                # Actually, let's just use the ticker as provided. The user might have AAPL.
+                # If they have GOTO, they should ideally enter GOTO.JK for yfinance, 
+                # but if they didn't, let's try raw first.
+                tick_obj = yf.Ticker(ticker)
+                fast_info = tick_obj.fast_info
+                
+                # if fast_info fails, it might be an Indonesian stock without .JK
+                if not hasattr(fast_info, 'last_price') or fast_info.last_price is None:
+                    tick_obj = yf.Ticker(f"{ticker}.JK")
+                    fast_info = tick_obj.fast_info
+                
+                last_price = fast_info.last_price
+                prev_close = fast_info.previous_close
+                change = last_price - prev_close
+                change_pct = (change / prev_close) * 100 if prev_close else 0
+                
+                prices.append({
+                    "ticker": ticker,
+                    "price": round(last_price, 2),
+                    "change": round(change, 2),
+                    "change_pct": round(change_pct, 2)
+                })
+            except Exception as e:
+                # If fetching fails for a ticker, just skip or return empty for it
+                print(f"Error fetching price for {ticker}: {e}")
+                prices.append({
+                    "ticker": ticker,
+                    "price": 0.0,
+                    "change": 0.0,
+                    "change_pct": 0.0
+                })
+                
+        return prices
+    except Exception as e:
+        print(f"Error in /api/prices: {e}")
+        return []
 
 # Endpoint: Stream LangGraph multi-agent execution events in real-time (SSE)
 @app.post("/api/analyze/{ticker}")

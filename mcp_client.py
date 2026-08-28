@@ -28,6 +28,7 @@ class MCPClientManager:
         current_dir = os.path.dirname(os.path.abspath(__file__))
         server_path = os.path.join(current_dir, "mcp_server.py")
         
+        # Ini kode buat run MCP server. ngasih perintah di hidden bacground terminal (bg child process)
         # Ensure we run using the active virtual environment's python interpreter
         python_exe = sys.executable
         
